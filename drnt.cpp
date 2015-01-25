@@ -16,8 +16,6 @@
 #include "Eigen/Dense"
 #include "utils.cpp"
 
-#include <fenv.h>
-
 #define uint unsigned int
 
 #define DROPOUT
@@ -557,7 +555,7 @@ void RNN::save(string fname) {
     out << Wb << endl;
     out << Vb << endl;
     out << bhb << endl;
-    
+
     for (uint l=0; l<layers; l++) {
       out << WWff[l] << endl;
       out << WWfb[l] << endl;
@@ -590,18 +588,18 @@ RNN::train(vector<vector<string> > &sents,
                 vector<vector<string> > &testL) {
   uint MAXEPOCH = 200;
   uint MINIBATCH = 80;
-  
+
   ostringstream strS;
   strS << "models/drnt_" << layers << "_" << nhf << "_"
         << nhf << "_" << DROP << "_"
         << MAXEPOCH << "_" << lr << "_" << LAMBDA << "_"
         << MR << "_" << fold;
   string fname = strS.str();
-  
+
   vector<uint> perm;
   for (uint i=0; i<sents.size(); i++)
     perm.push_back(i);
-  
+
   Matrix<double, 3, 2> bestVal, bestTest;
   bestVal << 0,0,0,0,0,0;
 
@@ -616,7 +614,7 @@ RNN::train(vector<vector<string> > &sents,
     if (epoch % 5 == 0) {  
       Matrix<double, 3, 2> resVal, resTest, resVal2, resTest2; 
       cout << "Epoch " << epoch << endl;
-     
+
       // diagnostic
       /*
         cout << Wf.norm() << " " << Wb.norm() << " "
@@ -628,7 +626,7 @@ RNN::train(vector<vector<string> > &sents,
              << VVf[l].norm() << " " << VVb[l].norm() << " "
              << WWfo[l].norm() << " " << WWbo[l].norm() << endl;
         }*/
-      
+
       cout << "P, R, F1:\n" << testSequential(sents, labels) << endl;
       resVal = testSequential(validX, validL);
       resTest = testSequential(testX, testL);
@@ -712,7 +710,7 @@ Matrix<double, 3, 2> RNN::testSequential(vector<vector<string> > &sents,
         cout << y << endl;
         assert(false);
       }
- 
+
       py = y;
       pt = t;
     }
@@ -841,21 +839,17 @@ void readSentences(vector<vector<string > > &X,
 }
 
 int main(int argc, char **argv) {
-  feenableexcept(FE_INVALID | FE_OVERFLOW);
   fold = atoi(argv[1]); // between 0-9
   srand(135);
   cout << setprecision(6);
 
-  uint nThreads = Eigen::nbThreads();
-  cout << nThreads << endl;
-
   LookupTable LT;
-  LT.load("/home/oirsoy/googlenews-mikolov-300", 200000, 300, true);
-
+  // i used mikolov's word2vec (300d) for my experiments, not CW
+  LT.load("embeddings-original.EMBEDDING_SIZE=25.txt", 268810, 25, false);
   vector<vector<string> > X;
   vector<vector<string> > T;
   readSentences(X, T, "ese.txt"); // dse.txt or ese.txt
-  
+
   unordered_map<string, set<uint> > sentenceIds;
   set<string> allDocs;
   ifstream in("sentenceid.txt");
@@ -874,7 +868,7 @@ int main(int argc, char **argv) {
     }
     numericId++;
   }
-  
+
   vector<vector<string> > trainX, validX, testX;
   vector<vector<string> > trainL, validL, testL;
   vector<bool> isUsed(X.size(), false);
@@ -907,26 +901,24 @@ int main(int argc, char **argv) {
       validL.push_back(T[id]);
     }
   }
-  
+
   cout << X.size() << " " << trainX.size() << " " << testX.size() << endl;
   cout << "Valid size: " << validX.size() << endl;
 
-  
-
   Matrix<double, 6, 2> best = Matrix<double, 6, 2>::Zero();
   double bestDrop;
-  for (DROP=0.1; DROP<0.2; DROP+=0.2) {
-    RNN brnn(300,25,25,3,LT);
+  for (DROP=0; DROP<0.1; DROP+=0.2) { // can use this loop for CV
+    RNN brnn(25,25,25,3,LT);
     auto results = brnn.train(trainX, trainL, validX, validL, testX, testL);
-    if (best(2,0) < results(2,0)) {
+    if (best(2,0) < results(2,0)) { // propF1 on val set
       best = results;
       bestDrop = DROP;
     }
+    brnn.save("model.txt");
   }
   cout << "Best: " << endl;
   cout << "Drop: " << bestDrop << endl;
   cout << best << endl;
-
 
   return 0;
 }
